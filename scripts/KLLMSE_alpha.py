@@ -1,8 +1,13 @@
+import keras_nlp.tokenizers
 import tensorflow as tf
 import keras
+from keras import layers
+from keras.preprocessing.text import Tokenizer
 from ncps.tf import LTC
 from ncps import wirings
 import pandas as pd
 import numpy as np
 
 train_ds = pd.read_csv("data/train.csv")
+
+tokinizer = Tokenizer(num_words=10000)
