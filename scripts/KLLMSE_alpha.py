@@ -11,7 +11,7 @@ from time import sleep
 from rich.progress import track
 from collections import defaultdict
 
-train_ds = pd.read_csv("/Users/arvinprince/tensorflow-files/kaggle-llm-science-exam/data/train.csv")
+train_ds = pd.read_csv("/kaggle-llm-science-exam/data/train.csv")
 
 class ProcessingLayer(layers.Layer):
     def __init__(self,
