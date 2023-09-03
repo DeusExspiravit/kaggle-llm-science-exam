@@ -10,6 +10,10 @@ import numpy as np
 from time import sleep
 from rich.progress import track
 from collections import defaultdict
+from sklearn.preprocessing import OrdinalEncoder
+import matplotlib.pyplot as plt
+import coremltools as ct
+from timeit import default_timer as timer
 
 train_ds = pd.read_csv("/Users/arvinprince/tensorflow-files/kaggle-llm-science-exam/data/train.csv")
 
@@ -21,6 +25,7 @@ class ProcessingLayer(keras.layers.Layer):
                  is_prompt=False):
         super().__init__()
         self.tokeinizer = Tokenizer(num_words=num_words, oov_token=oov_token, lower=lower)
+        self.encoder = OrdinalEncoder(dtype=np.float32)
         self._true = is_prompt
 
     def call(self, inputs, *args, **kwargs):
@@ -34,7 +39,7 @@ class ProcessingLayer(keras.layers.Layer):
         def wrapper(*args, **kwargs):
             prompt, options, answer = func(*args, **kwargs)
             prompt = pad(to_tensor(prompt))[:, tf.newaxis, :]
-            answer = to_tensor(answer)
+            answer = tf.squeeze(tf.one_hot(answer, 5))
             options = tf.concat([pad(to_tensor(opt))[:, tf.newaxis, :] for opt in options], axis=1)
             return (prompt, options, answer)
 
@@ -44,7 +49,7 @@ class ProcessingLayer(keras.layers.Layer):
             return padded
 
         def to_tensor(tensor):
-            return tf.ragged.constant(tensor, dtype=tf.uint32).to_tensor()
+            return tf.ragged.constant(tensor, dtype=tf.float32).to_tensor()
 
         return wrapper
 
@@ -55,7 +60,7 @@ class ProcessingLayer(keras.layers.Layer):
         prompt, options, answer = self.gather_features(ds)
         prompt = self.tokeinizer.texts_to_sequences(prompt)
         options = [self.tokeinizer.texts_to_sequences(options[k]) for k in options.columns]
-        answer = self.tokeinizer.texts_to_sequences(answer)
+        answer = self.encoder.fit_transform(answer.reshape((-1,1)))
         return prompt, options, answer
 
     def gather_features(self, df:pd.DataFrame):
@@ -66,7 +71,7 @@ class ProcessingLayer(keras.layers.Layer):
         prompt = df.prompt
         options = df.take(self.options_idx, axis=1)
         answer = df.answer
-        return prompt, options, answer
+        return prompt, options, answer.values
 
     def text_gen(self, df:pd.DataFrame):
         text_ds = df.select_dtypes(object)
@@ -118,17 +123,39 @@ class PositionalEmbedding(keras.layers.Layer):
 sample_pe = PositionalEmbedding(5000, 64, dtype=tf.float32)
 out_pe = sample_pe(out_pl[0])
 
-wiring = wirings.AutoNCP(32, 5)
+X, y=tf.cast(out_pe, tf.float32), tf.cast(out_pl[1], tf.float32)
+
+wiring = wirings.FullyConnected(64, 10)
 
 model = keras.Sequential([
-    layers.TimeDistributed(layers.Conv1D(64, 3, 2, "same", activation="relu")),
+    layers.TimeDistributed(layers.Conv1D(128, 7, 1, "same", activation="relu")),
     layers.TimeDistributed(layers.Flatten()),
-    layers.TimeDistributed(layers.Dense(128, activation="relu")),
+    layers.TimeDistributed(layers.Dense(128, activation="gelu")),
     LTC(wiring, return_sequences=True),
     layers.GlobalAvgPool1D(),
     layers.Dense(5)
 ])
 
-model.compile(optimizer="adam", loss=keras.losses.CategoricalCrossentropy)
+loss_fn = keras.losses.CategoricalCrossentropy(from_logits=True)
+optimizer = keras.optimizers.legacy.Adam(learning_rate=.015)
 
-model.fit(tf.cast(out_pe, tf.float32), tf.cast(out_pl[1], tf.float32), batch_size=25, epochs=1)
+model.compile(optimizer=optimizer, loss=loss_fn)
+
+history = model.fit(x=X, y=y, batch_size=100, epochs=1, validation_split=.2)
+
+training_plots = pd.DataFrame(history.history)
+training_plots.plot()
+plt.show()
+
+# coreml = ct.convert(model, convert_to="mlprogram",
+#                     compute_units=ct.ComputeUnit.ALL)
+#
+# start = timer()
+# coreml.predict({"time_distributed_input": X._numpy()[:5]})
+# end = timer()
+# print((end-start))
+#
+# start = timer()
+# model.predict(X)
+# end = timer()
+# print((end-start))
