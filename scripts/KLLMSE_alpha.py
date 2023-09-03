@@ -11,9 +11,9 @@ from time import sleep
 from rich.progress import track
 from collections import defaultdict
 
-train_ds = pd.read_csv("/kaggle-llm-science-exam/data/train.csv")
+train_ds = pd.read_csv("/Users/arvinprince/tensorflow-files/kaggle-llm-science-exam/data/train.csv")
 
-class ProcessingLayer(layers.Layer):
+class ProcessingLayer(keras.layers.Layer):
     def __init__(self,
                  num_words=1000,
                  oov_token="OOV",
@@ -77,4 +77,58 @@ class ProcessingLayer(layers.Layer):
 sample_pl = ProcessingLayer(num_words=5000)
 out_pl = sample_pl(train_ds)
 
+class PositionalEmbedding(keras.layers.Layer):
+    def __init__(self,
+                 vocab_size: int,
+                 # max_len: int,
+                 embed_dim: int,
+                 # num_phrases:int,
+                 dtype = tf.int32):
+        super().__init__()
+        self.d_model = embed_dim
+        self.embedding = keras.layers.Embedding(vocab_size, embed_dim)
+        self.type = dtype
 
+    def compute_mask(self, *args, **kwargs):
+        return self.embedding.compute_mask(*args, **kwargs)
+
+    def call(self, x, *args, **kwargs):
+        # pos_enc = self.positional_encoding(num_phrases=self.num_phrases, length=self.max_len, depth=self.vocab_size, dtype=self.type)
+        # dim = tf.shape(x)[-1]
+        x = self.embedding(x)
+        x *= tf.math.sqrt(tf.cast(self.d_model, dtype=self.type))
+        # x = pos_enc[tf.newaxis, :, :, :self.emb_dim] + x
+        return x
+
+    def positional_encoding(self,num_phrases, length, depth, dtype):
+        depth = int(depth / 2)
+
+        positions = np.arange(num_phrases*length).reshape((num_phrases, length))[:, :, np.newaxis]
+        depths = np.arange(int(length*depth)).reshape((length, depth))[np.newaxis, :, :] / depth
+
+        angle_rates = 1 / (1e4 ** depths)
+        angle_rads = positions * angle_rates
+
+        pos_encoding = np.concatenate(
+            [np.sin(angle_rads), np.cos(angle_rads)],
+            axis=-1,
+        )
+        return tf.cast(pos_encoding, dtype=dtype)
+
+sample_pe = PositionalEmbedding(5000, 64, dtype=tf.float32)
+out_pe = sample_pe(out_pl[0])
+
+wiring = wirings.AutoNCP(32, 5)
+
+model = keras.Sequential([
+    layers.TimeDistributed(layers.Conv1D(64, 3, 2, "same", activation="relu")),
+    layers.TimeDistributed(layers.Flatten()),
+    layers.TimeDistributed(layers.Dense(128, activation="relu")),
+    LTC(wiring, return_sequences=True),
+    layers.GlobalAvgPool1D(),
+    layers.Dense(5)
+])
+
+model.compile(optimizer="adam", loss=keras.losses.CategoricalCrossentropy)
+
+model.fit(tf.cast(out_pe, tf.float32), tf.cast(out_pl[1], tf.float32), batch_size=25, epochs=1)
