@@ -4,8 +4,8 @@ This repository contains the code files for the kaggle competition - kaggle llm-
 
 # IMPORTANT NOTICE
 ```diff
--_This repository is being depreciated until further notice_
+- This repository is being depreciated until further notice
 
 
-@@This is because the corresponding kaggle competition has ended before the completion of the project@@
+@@ This is because the corresponding kaggle competition has ended before the completion of the project @@
 ```
