@@ -137,11 +137,14 @@ class PositionalEmbedding(keras.layers.Layer):
                  # max_len: int,
                  embed_dim: int,
                  # num_phrases:int,
+                 batch_size:int,
                  dtype = tf.int32):
         super().__init__()
         self.d_model = embed_dim
         self.embedding = keras.layers.Embedding(vocab_size, embed_dim)
         self.type = dtype
+        self.batch_size = batch_size
+
     def compute_mask(self, *args, **kwargs):
         return self.embedding.compute_mask(*args, **kwargs)
 
@@ -153,7 +156,6 @@ class PositionalEmbedding(keras.layers.Layer):
         x *= tf.math.sqrt(tf.cast(self.d_model, dtype=self.type))
         # x = pos_enc[tf.newaxis, :, :, :self.emb_dim] + x
         return x
-
     def positional_encoding(self,num_phrases, length, depth, dtype):
         depth = int(depth / 2)
 
@@ -168,3 +170,7 @@ class PositionalEmbedding(keras.layers.Layer):
             axis=-1,
         )
         return tf.cast(pos_encoding, dtype=dtype)
+
+def dataset_generator(inputs, batch_size):
+    return tf.data.Dataset.from_tensor_slices(inputs, name="llm_sc").batch(batch_size)
+
