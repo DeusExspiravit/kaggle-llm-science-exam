@@ -2,7 +2,7 @@
 
 This repository contains the code files for the kaggle competition - kaggle llm-science exam
 
-# IMPORTANT NOTE
+# IMPORTANT NOTICE
 ```diff
 -_This repository is being depreciated until further notice_
 
